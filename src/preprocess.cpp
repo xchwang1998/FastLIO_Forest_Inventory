@@ -89,6 +89,52 @@ void Preprocess::process(const sensor_msgs::PointCloud2::ConstPtr &msg, PointClo
   *pcl_out = pl_surf;
 }
 
+void Preprocess::process(const sensor_msgs::PointCloud2::ConstPtr &msg, 
+                          PointCloudXYZI::Ptr &pcl_out, 
+                          pcl::PointCloud<OusterPointXYZIRT>::Ptr &ouster_out)
+{
+  switch (time_unit)
+  {
+    case SEC:
+      time_unit_scale = 1.e3f;
+      break;
+    case MS:
+      time_unit_scale = 1.f;
+      break;
+    case US:
+      time_unit_scale = 1.e-3f;
+      break;
+    case NS:
+      time_unit_scale = 1.e-6f;
+      break;
+    default:
+      time_unit_scale = 1.f;
+      break;
+  }
+
+  switch (lidar_type)
+  {
+  case OUST64:
+    oust64_handler(msg);
+    pcl::fromROSMsg(*msg, *ouster_out); // convert the msg to ouster data
+    break;
+
+  case VELO16:
+    velodyne_handler(msg);
+    break;
+
+  case MARSIM:
+    sim_handler(msg);
+    break;
+  
+  default:
+    printf("Error LiDAR Type");
+    break;
+  }
+  *pcl_out = pl_surf;
+}
+
+
 void Preprocess::avia_handler(const livox_ros_driver::CustomMsg::ConstPtr &msg)
 {
   pl_surf.clear();

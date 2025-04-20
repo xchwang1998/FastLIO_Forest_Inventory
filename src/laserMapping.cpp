@@ -101,9 +101,12 @@ vector<BoxPointType> cub_needrm;
 vector<PointVector>  Nearest_Points; 
 vector<double>       extrinT(3, 0.0);
 vector<double>       extrinR(9, 0.0);
-deque<double>                     time_buffer;
-deque<PointCloudXYZI::Ptr>        lidar_buffer;
-deque<sensor_msgs::Imu::ConstPtr> imu_buffer;
+deque<double>                                   time_buffer;
+deque<PointCloudXYZI::Ptr>                      lidar_buffer;
+deque<sensor_msgs::Imu::ConstPtr>               imu_buffer;
+
+// set the ouster data buffer
+deque<pcl::PointCloud<OusterPointXYZIRT>::Ptr>  ouster_buffer;
 
 PointCloudXYZI::Ptr featsFromMap(new PointCloudXYZI());
 PointCloudXYZI::Ptr feats_undistort(new PointCloudXYZI());
@@ -113,6 +116,10 @@ PointCloudXYZI::Ptr normvec(new PointCloudXYZI(100000, 1));
 PointCloudXYZI::Ptr laserCloudOri(new PointCloudXYZI(100000, 1));
 PointCloudXYZI::Ptr corr_normvect(new PointCloudXYZI(100000, 1));
 PointCloudXYZI::Ptr _featsArray;
+
+// set the ouster point cloud and the key frame pose
+pcl::PointCloud<OusterPointXYZIRT>::Ptr ouster_undistort(new pcl::PointCloud<OusterPointXYZIRT>());
+pcl::PointCloud<PointTypePose>::Ptr key_frame_poses_data(new pcl::PointCloud<PointTypePose>());
 
 pcl::VoxelGrid<PointType> downSizeFilterSurf;
 pcl::VoxelGrid<PointType> downSizeFilterMap;
@@ -208,6 +215,31 @@ void RGBpointBodyToWorld(PointType const * const pi, PointType * const po)
     po->intensity = pi->intensity;
 }
 
+void RGBpointBodyToWorld(OusterPointXYZIRT const * const pi, OusterPointXYZIRT * const po)
+{
+    if (pi == nullptr || po == nullptr) {
+        std::cerr << "Error: Null pointer passed to RGBpointBodyToWorld!" << std::endl;
+        return;
+    }
+
+    V3D p_body(pi->x, pi->y, pi->z);
+    V3D p_global(state_point.rot * (state_point.offset_R_L_I*p_body + state_point.offset_T_L_I) + state_point.pos);
+
+    po->x = p_global(0);
+    po->y = p_global(1);
+    po->z = p_global(2);
+
+    // copy pi
+    po->intensity = pi->intensity;
+    po->t = pi->t;
+    po->reflectivity = pi->reflectivity;
+    po->ring = pi->ring;
+    po->ambient = pi->ambient;
+    po->range = pi->range;
+
+}
+
+
 void RGBpointBodyLidarToIMU(PointType const * const pi, PointType * const po)
 {
     V3D p_body_lidar(pi->x, pi->y, pi->z);
@@ -285,11 +317,19 @@ void standard_pcl_cbk(const sensor_msgs::PointCloud2::ConstPtr &msg)
     {
         ROS_ERROR("lidar loop back, clear buffer");
         lidar_buffer.clear();
+        ouster_buffer.clear();
     }
 
+    // PointCloudXYZI::Ptr  ptr(new PointCloudXYZI());
+    // p_pre->process(msg, ptr);
+    // lidar_buffer.push_back(ptr);
+    
     PointCloudXYZI::Ptr  ptr(new PointCloudXYZI());
-    p_pre->process(msg, ptr);
+    pcl::PointCloud<OusterPointXYZIRT>::Ptr ouster_ptr(new pcl::PointCloud<OusterPointXYZIRT>());
+    p_pre->process(msg, ptr, ouster_ptr);
     lidar_buffer.push_back(ptr);
+    ouster_buffer.push_back(ouster_ptr);
+
     time_buffer.push_back(msg->header.stamp.toSec());
     last_timestamp_lidar = msg->header.stamp.toSec();
     s_plot11[scan_count] = omp_get_wtime() - preprocess_start_time;
@@ -377,6 +417,7 @@ bool sync_packages(MeasureGroup &meas)
         meas.lidar = lidar_buffer.front();
         meas.lidar_beg_time = time_buffer.front();
 
+        ouster_undistort = ouster_buffer.front();
 
         if (meas.lidar->points.size() <= 1) // time too little
         {
@@ -419,6 +460,7 @@ bool sync_packages(MeasureGroup &meas)
 
     lidar_buffer.pop_front();
     time_buffer.pop_front();
+    ouster_buffer.pop_front();
     lidar_pushed = false;
     return true;
 }
@@ -633,6 +675,67 @@ void publish_path(const ros::Publisher pubPath)
         path.poses.push_back(msg_body_pose);
         pubPath.publish(path);
     }
+}
+
+/******* Publish Key Frame Info *******/
+void publish_key_frame_info(const ros::Publisher pubKeyFrameInfo)
+{
+    // set the key frame info
+    fast_lio::key_frame_info keyframeInfo;
+    keyframeInfo.header.stamp = ros::Time().fromSec(lidar_end_time);
+    keyframeInfo.header.frame_id = "camera_init";
+
+    // transformed the ouster data
+    int size = ouster_undistort->points.size();
+    pcl::PointCloud<OusterPointXYZIRT>::Ptr ousterCloudWorld(new pcl::PointCloud<OusterPointXYZIRT>(size,1));
+    for (int i = 0; i < size; i++)
+    {
+        RGBpointBodyToWorld(&ouster_undistort->points[i], &ousterCloudWorld->points[i]);
+    }
+    
+    // get the original Ouster data
+    sensor_msgs::PointCloud2 ousterCloudOriMsg;
+    pcl::toROSMsg(*ouster_undistort, ousterCloudOriMsg);
+    ousterCloudOriMsg.header.stamp = ros::Time().fromSec(lidar_end_time);
+    ousterCloudOriMsg.header.frame_id = "camera_init";
+    
+    // get the transformed Ouster data
+    sensor_msgs::PointCloud2 ousterCloudWorldMsg;
+    pcl::toROSMsg(*ousterCloudWorld, ousterCloudWorldMsg);
+    ousterCloudWorldMsg.header.stamp = ros::Time().fromSec(lidar_end_time);
+    ousterCloudWorldMsg.header.frame_id = "camera_init";
+
+    // get the keypose (R2R1, R2t1+t2)
+    SO3 ROT = state_point.rot * state_point.offset_R_L_I;
+    vect3 TRANS = state_point.rot * state_point.offset_T_L_I + state_point.pos;
+    Eigen::Affine3f affine = Eigen::Affine3f::Identity();
+    affine.linear() = ROT.cast<float>().toRotationMatrix();
+    affine.translation() = TRANS.cast<float>();
+    // convert to xyz and euler angle
+    float x, y, z, roll, pitch, yaw;
+    pcl::getTranslationAndEulerAngles(affine, x, y, z, roll, pitch, yaw);
+    
+    // set the msg data
+    keyframeInfo.key_frame_cloud_ori = ousterCloudOriMsg;
+    keyframeInfo.key_frame_cloud_transed = ousterCloudWorldMsg;
+
+    /*** slected the keyframe at 1Hz ***/
+    static int jjj = 0;
+    if (jjj % 10 == 0) 
+    {
+        PointTypePose pj;
+        pj.x = x; pj.y = y; pj.z = z;
+        pj.roll = roll; pj.pitch = pitch; pj.yaw = yaw;
+        key_frame_poses_data->push_back(pj);
+        sensor_msgs::PointCloud2 keyFramePosesMsg;
+        pcl::toROSMsg(*key_frame_poses_data, keyFramePosesMsg);
+        keyFramePosesMsg.header.stamp = ros::Time().fromSec(lidar_end_time);
+        keyFramePosesMsg.header.frame_id = "camera_init";
+
+        keyframeInfo.key_frame_poses = keyFramePosesMsg;
+        pubKeyFrameInfo.publish(keyframeInfo);
+    }
+    jjj++;
 }
 
 void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_data)
@@ -858,6 +961,8 @@ int main(int argc, char** argv)
             ("/Odometry", 100000);
     ros::Publisher pubPath          = nh.advertise<nav_msgs::Path> 
             ("/path", 100000);
+    ros::Publisher pubKeyFrameInfo          = nh.advertise<fast_lio::key_frame_info> 
+        ("/fast_lio/key_frame_info", 100000);
 //------------------------------------------------------------------------------------------------------
     signal(SIGINT, SigHandle);
     ros::Rate rate(5000);
@@ -982,6 +1087,9 @@ int main(int argc, char** argv)
             if (scan_pub_en && scan_body_pub_en) publish_frame_body(pubLaserCloudFull_body);
             // publish_effect_world(pubLaserCloudEffect);
             // publish_map(pubLaserCloudMap);
+            
+            /******* Publish Key Frame Info *******/
+            publish_key_frame_info(pubKeyFrameInfo);
 
             /*** Debug variables ***/
             if (runtime_pos_log)

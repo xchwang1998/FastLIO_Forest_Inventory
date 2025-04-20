@@ -71,11 +71,13 @@ include_directories(
 add_message_files(
   FILES
   Pose6D.msg
+  key_frame_info.msg
 )
 
 generate_messages(
  DEPENDENCIES
  geometry_msgs
+ sensor_msgs
 )
 
 catkin_package(
