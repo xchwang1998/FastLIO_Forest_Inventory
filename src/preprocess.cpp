@@ -91,7 +91,7 @@ void Preprocess::process(const sensor_msgs::PointCloud2::ConstPtr &msg, PointClo
 
 void Preprocess::process(const sensor_msgs::PointCloud2::ConstPtr &msg, 
                           PointCloudXYZI::Ptr &pcl_out, 
-                          pcl::PointCloud<OusterPointXYZIRT>::Ptr &ouster_out)
+                          pcl::PointCloud<ouster_ros::Point>::Ptr &ouster_out)
 {
   switch (time_unit)
   {

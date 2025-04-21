@@ -106,7 +106,7 @@ deque<PointCloudXYZI::Ptr>                      lidar_buffer;
 deque<sensor_msgs::Imu::ConstPtr>               imu_buffer;
 
 // set the ouster data buffer
-deque<pcl::PointCloud<OusterPointXYZIRT>::Ptr>  ouster_buffer;
+deque<pcl::PointCloud<ouster_ros::Point>::Ptr>  ouster_buffer;
 
 PointCloudXYZI::Ptr featsFromMap(new PointCloudXYZI());
 PointCloudXYZI::Ptr feats_undistort(new PointCloudXYZI());
@@ -118,7 +118,7 @@ PointCloudXYZI::Ptr corr_normvect(new PointCloudXYZI(100000, 1));
 PointCloudXYZI::Ptr _featsArray;
 
 // set the ouster point cloud and the key frame pose
-pcl::PointCloud<OusterPointXYZIRT>::Ptr ouster_undistort(new pcl::PointCloud<OusterPointXYZIRT>());
+pcl::PointCloud<ouster_ros::Point>::Ptr ouster_undistort(new pcl::PointCloud<ouster_ros::Point>());
 pcl::PointCloud<PointTypePose>::Ptr key_frame_poses_data(new pcl::PointCloud<PointTypePose>());
 
 pcl::VoxelGrid<PointType> downSizeFilterSurf;
@@ -215,7 +215,7 @@ void RGBpointBodyToWorld(PointType const * const pi, PointType * const po)
     po->intensity = pi->intensity;
 }
 
-void RGBpointBodyToWorld(OusterPointXYZIRT const * const pi, OusterPointXYZIRT * const po)
+void RGBpointBodyToWorld(ouster_ros::Point const * const pi, ouster_ros::Point * const po)
 {
     if (pi == nullptr || po == nullptr) {
         std::cerr << "Error: Null pointer passed to RGBpointBodyToWorld!" << std::endl;
@@ -325,7 +325,7 @@ void standard_pcl_cbk(const sensor_msgs::PointCloud2::ConstPtr &msg)
     // lidar_buffer.push_back(ptr);
     
     PointCloudXYZI::Ptr  ptr(new PointCloudXYZI());
-    pcl::PointCloud<OusterPointXYZIRT>::Ptr ouster_ptr(new pcl::PointCloud<OusterPointXYZIRT>());
+    pcl::PointCloud<ouster_ros::Point>::Ptr ouster_ptr(new pcl::PointCloud<ouster_ros::Point>());
     p_pre->process(msg, ptr, ouster_ptr);
     lidar_buffer.push_back(ptr);
     ouster_buffer.push_back(ouster_ptr);
@@ -687,7 +687,7 @@ void publish_key_frame_info(const ros::Publisher pubKeyFrameInfo)
 
     // transformed the ouster data
     int size = ouster_undistort->points.size();
-    pcl::PointCloud<OusterPointXYZIRT>::Ptr ousterCloudWorld(new pcl::PointCloud<OusterPointXYZIRT>(size,1));
+    pcl::PointCloud<ouster_ros::Point>::Ptr ousterCloudWorld(new pcl::PointCloud<ouster_ros::Point>(size,1));
     for (int i = 0; i < size; i++)
     {
         RGBpointBodyToWorld(&ouster_undistort->points[i], &ousterCloudWorld->points[i]);

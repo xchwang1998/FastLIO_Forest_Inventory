@@ -14,44 +14,6 @@ using namespace std;
 typedef pcl::PointXYZINormal PointType;
 typedef pcl::PointCloud<PointType> PointCloudXYZI;
 
-struct OusterPointXYZIRT {
-    PCL_ADD_POINT4D;
-    float intensity;
-    uint32_t t;
-    uint16_t reflectivity;
-    uint8_t ring;
-    uint16_t ambient;
-    uint32_t range;
-    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
-} EIGEN_ALIGN16;
-POINT_CLOUD_REGISTER_POINT_STRUCT(OusterPointXYZIRT,
-    (float, x, x) (float, y, y) (float, z, z) (float, intensity, intensity)
-    (uint32_t, t, t) (uint16_t, reflectivity, reflectivity)
-    (uint8_t, ring, ring) (uint16_t, ambient, ambient) (uint32_t, range, range)
-)
-
-/*
-    * A point cloud type that has 6D pose info ([x,y,z,roll,pitch,yaw] intensity is time stamp)
-    */
-struct PointXYZIRPYT
-{
-    PCL_ADD_POINT4D
-    PCL_ADD_INTENSITY;                  // preferred way of adding a XYZ+padding
-    float roll;
-    float pitch;
-    float yaw;
-    double time;
-    EIGEN_MAKE_ALIGNED_OPERATOR_NEW   // make sure our new allocators are aligned
-} EIGEN_ALIGN16;                    // enforce SSE padding for correct memory alignment
-
-POINT_CLOUD_REGISTER_POINT_STRUCT (PointXYZIRPYT,
-                                   (float, x, x) (float, y, y)
-                                   (float, z, z) (float, intensity, intensity)
-                                   (float, roll, roll) (float, pitch, pitch) (float, yaw, yaw)
-                                   (double, time, time))
-
-typedef PointXYZIRPYT  PointTypePose;
-
 enum LID_TYPE{AVIA = 1, VELO16, OUST64, MARSIM}; //{1, 2, 3}
 enum TIME_UNIT{SEC = 0, MS = 1, US = 2, NS = 3};
 enum Feature{Nor, Poss_Plane, Real_Plane, Edge_Jump, Edge_Plane, Wire, ZeroPoint};
@@ -106,7 +68,6 @@ namespace ouster_ros {
       EIGEN_MAKE_ALIGNED_OPERATOR_NEW
   };
 }  // namespace ouster_ros
-
 // clang-format off
 POINT_CLOUD_REGISTER_POINT_STRUCT(ouster_ros::Point,
     (float, x, x)
@@ -121,6 +82,29 @@ POINT_CLOUD_REGISTER_POINT_STRUCT(ouster_ros::Point,
     (std::uint32_t, range, range)
 )
 
+
+/*
+    * A point cloud type that has 6D pose info ([x,y,z,roll,pitch,yaw] intensity is time stamp)
+    */
+struct PointXYZIRPYT
+{
+    PCL_ADD_POINT4D
+    PCL_ADD_INTENSITY;                  // preferred way of adding a XYZ+padding
+    float roll;
+    float pitch;
+    float yaw;
+    double time;
+    EIGEN_MAKE_ALIGNED_OPERATOR_NEW   // make sure our new allocators are aligned
+} EIGEN_ALIGN16;                    // enforce SSE padding for correct memory alignment
+
+POINT_CLOUD_REGISTER_POINT_STRUCT (PointXYZIRPYT,
+                                   (float, x, x) (float, y, y)
+                                   (float, z, z) (float, intensity, intensity)
+                                   (float, roll, roll) (float, pitch, pitch) (float, yaw, yaw)
+                                   (double, time, time))
+
+typedef PointXYZIRPYT  PointTypePose;
+
 class Preprocess
 {
   public:
@@ -133,7 +117,7 @@ class Preprocess
   void process(const sensor_msgs::PointCloud2::ConstPtr &msg, PointCloudXYZI::Ptr &pcl_out);
   void process(const sensor_msgs::PointCloud2::ConstPtr &msg, 
                           PointCloudXYZI::Ptr &pcl_out, 
-                          pcl::PointCloud<OusterPointXYZIRT>::Ptr &ouster_out);
+                          pcl::PointCloud<ouster_ros::Point>::Ptr &ouster_out);
   void set(bool feat_en, int lid_type, double bld, int pfilt_num);
 
   // sensor_msgs::PointCloud2::ConstPtr pointcloud;
